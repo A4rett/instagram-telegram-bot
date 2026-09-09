@@ -48,26 +48,43 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header(
+            "Content-Type",
+            "text/plain; charset=utf-8"
+        )
         self.end_headers()
         self.wfile.write(b"Bot is running")
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
+        length = int(
+            self.headers.get("Content-Length", 0)
+        )
         body = self.rfile.read(length)
 
         try:
             update = json.loads(body)
 
-            # دۆزینەوەی callback ـی دوگمەکان
+            # =========================
+            # Callback buttons
+            # =========================
+
             callback = update.get("callback_query")
 
             if callback:
                 callback_id = callback.get("id")
                 callback_data = callback.get("data")
-                callback_message = callback.get("message", {})
-                callback_chat = callback_message.get("chat", {})
-                callback_chat_id = callback_chat.get("id")
+
+                callback_message = callback.get(
+                    "message", {}
+                )
+
+                callback_chat = callback_message.get(
+                    "chat", {}
+                )
+
+                callback_chat_id = callback_chat.get(
+                    "id"
+                )
 
                 if callback_id:
                     answer_callback(callback_id)
@@ -103,16 +120,26 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"OK")
                 return
 
-            # نامە ئاساییەکانی Telegram
+            # =========================
+            # Normal messages
+            # =========================
+
             message = update.get("message", {})
+
             chat = message.get("chat", {})
-            text = message.get("text", "")
+
+            text = message.get("text", "").strip()
+
             chat_id = chat.get("id")
 
             if not chat_id:
                 self.send_response(200)
                 self.end_headers()
                 return
+
+            # =========================
+            # START
+            # =========================
 
             if text == "/start":
 
@@ -149,12 +176,31 @@ class handler(BaseHTTPRequestHandler):
                     keyboard
                 )
 
+            # =========================
+            # SEARCH COMMAND
+            # =========================
+
             elif text == "/search":
 
                 send_message(
                     chat_id,
-                    "🔎 ناوی بەکارهێنەر بنێرە."
+                    "🔎 تکایە Username ـەکە بنێرە."
                 )
+
+            # =========================
+            # LOCATION
+            # =========================
+
+            elif text == "/location":
+
+                send_message(
+                    chat_id,
+                    "📍 تکایە ناوی شار یان شوێنی گشتی بنێرە."
+                )
+
+            # =========================
+            # REPORT
+            # =========================
 
             elif text == "/report":
 
@@ -163,24 +209,48 @@ class handler(BaseHTTPRequestHandler):
                     "📊 ڕاپۆرتی زانیاری گشتی لێرە دروست دەکرێت."
                 )
 
+            # =========================
+            # INFO
+            # =========================
+
             elif text == "/info":
 
                 send_message(
                     chat_id,
-                    "ℹ️ ئەم بۆتە تەنها داتای گشتی و ڕێگەپێدراو بەکاردێنێت."
+                    "ℹ️ ئەم بۆتە تەنها داتای گشتی "
+                    "و ڕێگەپێدراو بەکاردێنێت."
+                )
+
+            # =========================
+            # USERNAME
+            # =========================
+
+            elif text:
+
+                username = text.lstrip("@").strip()
+
+                send_message(
+                    chat_id,
+                    f"🔎 Username ـەکە وەرگیرا:\n\n"
+                    f"@{username}\n\n"
+                    f"⏳ ئێستا پشکنینی داتای گشتی "
+                    f"بۆ ئەم ناوە دەکرێت."
                 )
 
             else:
 
                 send_message(
                     chat_id,
-                    "تکایە /start بنێرە بۆ کردنەوەی مێنیوەکە."
+                    "تکایە /start بنێرە."
                 )
 
         except Exception:
             pass
 
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header(
+            "Content-Type",
+            "text/plain; charset=utf-8"
+        )
         self.end_headers()
         self.wfile.write(b"OK")
