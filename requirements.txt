@@ -1,2 +1,3 @@
 python-telegram-bot
 python-dotenv
+instaloader==4.10.1
