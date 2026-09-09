@@ -1,19 +1,16 @@
 import os
-from telegram import Update
-from telegram.ext import Application
+from http.server import BaseHTTPRequestHandler
 
 
-async def handler(request):
-    token = os.environ["BOT_TOKEN"]
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Telegram bot is running")
 
-    app = Application.builder().token(token).build()
-
-    data = await request.json()
-    update = Update.de_json(data, app.bot)
-
-    await app.process_update(update)
-
-    return {
-        "statusCode": 200,
-        "body": "OK"
-    }
+    def do_POST(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
