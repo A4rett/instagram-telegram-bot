@@ -44,30 +44,32 @@ class handler(BaseHTTPRequestHandler):
             text = message.get("text", "")
             chat_id = chat.get("id")
 
-            if not chat_id:
+                       if not chat_id:
                 self.send_response(200)
                 self.end_headers()
                 return
 
             if text == "/start":
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "🔎 گەڕانی Username", "callback_data": "search"},
-                {"text": "📍 گەڕانی شوێن", "callback_data": "location"}
-            ],
-            [
-                {"text": "📊 ڕاپۆرت", "callback_data": "report"},
-                {"text": "ℹ️ زانیاری", "callback_data": "info"}
-            ]
-        ]
-    }
+                keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🔎 گەڕانی Username", "callback_data": "search"},
+                            {"text": "📍 گەڕانی شوێن", "callback_data": "location"}
+                        ],
+                        [
+                            {"text": "📊 ڕاپۆرت", "callback_data": "report"},
+                            {"text": "ℹ️ زانیاری", "callback_data": "info"}
+                        ]
+                    ]
+                }
 
-    send_message(
-        chat_id,
-        "سڵاو 👋\n\nبەخێربێیت بۆ بۆتی زانیاری گشتی 🔎\n\nلە مێنیوەکەوە هەڵبژێرە:",
-        keyboard
-    )
+                send_message(
+                    chat_id,
+                    "سڵاو 👋\n\n"
+                    "بەخێربێیت بۆ بۆتی زانیاری گشتی 🔎\n\n"
+                    "لە مێنیوەکەوە هەڵبژێرە:",
+                    keyboard
+                )
 
             elif text == "/search":
                 send_message(
