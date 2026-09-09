@@ -1,330 +1,95 @@
-import os
-import json
-import urllib.request
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import quote
+import instaloader
+import time
+import sys
 
+# ڕێکخستنی کاتەکان بۆ ئەوەی ئینستاگرام بلۆکمان نەکات
+DELAY_BETWEEN_ACCOUNTS = 30  # ٣٠ چرکە وەستان لە نێوان هەر ئەکاونتێک
+BATCH_SIZE = 10              # پشکنینی ١٠ ئەکاونت لە هەر قۆناغێکدا
+DELAY_BETWEEN_BATCHES = 120  # ٢ خولەک وەستان لە نێوان قۆناغەکاندا
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+def load_combo_list(filename="combo.txt"):
+    """خوێندنەوەی یوزەرنەیمەکان لە فایلی کۆمبۆوە"""
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            # پاککردنەوەی ناوەکان لە بۆشایی و نیشانەی @
+            return [line.strip().replace('@', '') for line in file if line.strip()]
+    except FileNotFoundError:
+        print(f"❌ هەڵە: فایلی {filename} نەدۆزرایەوە.")
+        sys.exit(1)
 
+def main():
+    print("=== سیستەمی گەڕان بەدوای یوزەر لەناو کۆمبۆ ===\n")
+    
+    # ١. وەرگرتنی زانیارییەکان
+    target_user = input("یوزەرنەیمی ئامانج بنووسە (ئەو کەسەی کە لێی دەگەڕێیت): ").strip().replace('@', '')
+    my_username = input("یوزەرنەیمی ئەکاونتەکەی خۆت بنووسە (بۆ لۆگین): ").strip()
+    my_password = input("پاسۆردی ئەکاونتەکەی خۆت بنووسە: ").strip()
 
-def telegram(method, data):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    # ٢. دروستکردنی پەیوەندی لەگەڵ ئینستاگرام
+    L = instaloader.Instaloader()
+    
+    try:
+        print("\n⏳ خەریکی چوونەژوورەوەم بۆ ئینستاگرام...")
+        L.login(my_username, my_password)
+        print("✅ بە سەرکەوتوویی چووە ژوورەوە!\n")
+    except Exception as e:
+        print(f"❌ هەڵە لە چوونەژوورەوە: {e}")
+        sys.exit(1)
 
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
+    # ٣. خوێندنەوەی لیستەکە
+    combo_list = load_combo_list("combo.txt")
+    total_accounts = len(combo_list)
+    print(f"📄 {total_accounts} ئەکاونت لە فایلی کۆمبۆدا دۆزرایەوە.")
+    
+    found_in = [] # ئەو ئەکاونتانەی کە ئامانجەکەی تێدا دەدۆزرێتەوە لێرە هەڵدەگیرێت
 
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return response.read()
-
-
-def send_message(chat_id, text):
-    telegram("sendMessage", {
-        "chat_id": chat_id,
-        "text": text,
-        "disable_web_page_preview": True
-    })
-
-
-def public_profile(username):
-    username = username.strip().lstrip("@")
-
-    if not username:
-        return "❌ Username ـەکە بەتاڵە."
-
-    profile_url = (
-        "https://www.instagram.com/"
-        + quote(username, safe="")
-        + "/"
-    )
-
-    return (
-        "🔎 ڕاپۆرتی زانیاری گشتی\n\n"
-        f"👤 Username: @{username}\n\n"
-        f"🔗 Profile:\n{profile_url}\n\n"
-        "🌐 سەرچاوە:\n"
-        "Instagram public profile\n\n"
-        "⚠️ تێبینی:\n"
-        "ئەم بۆتە تەنها زانیارییە گشتییەکان "
-        "پشکنین دەکات. داتای private، "
-        "followers ـی شاراوە، password، token "
-        "یان session بەدەست ناهێنێت."
-    )
-
-
-def menu():
-    return {
-        "inline_keyboard": [
-            [
-                {
-                    "text": "🔎 Username",
-                    "callback_data": "search"
-                },
-                {
-                    "text": "📍 شوێن",
-                    "callback_data": "location"
-                }
-            ],
-            [
-                {
-                    "text": "📊 ڕاپۆرت",
-                    "callback_data": "report"
-                },
-                {
-                    "text": "ℹ️ زانیاری",
-                    "callback_data": "info"
-                }
-            ]
-        ]
-    }
-
-
-class handler(BaseHTTPRequestHandler):
-
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header(
-            "Content-Type",
-            "text/plain; charset=utf-8"
-        )
-        self.end_headers()
-        self.wfile.write(b"OSINT Bot is running")
-
-    def do_POST(self):
-
+    # ٤. لۆژیکی گەڕان و Batching
+    for index, current_public_user in enumerate(combo_list, start=1):
+        print(f"🔍 [{index}/{total_accounts}] پشکنینی فۆڵۆوەرەکانی: @{current_public_user}")
+        
         try:
-            length = int(
-                self.headers.get("Content-Length", 0)
-            )
-
-            body = self.rfile.read(length)
-            update = json.loads(body)
-
-            # -------------------------
-            # Callback buttons
-            # -------------------------
-
-            callback = update.get("callback_query")
-
-            if callback:
-
-                callback_id = callback.get("id")
-                data = callback.get("data")
-
-                message = callback.get(
-                    "message",
-                    {}
-                )
-
-                chat = message.get(
-                    "chat",
-                    {}
-                )
-
-                chat_id = chat.get("id")
-
-                if callback_id:
-                    telegram(
-                        "answerCallbackQuery",
-                        {
-                            "callback_query_id":
-                            callback_id
-                        }
-                    )
-
-                if chat_id:
-
-                    if data == "search":
-
-                        send_message(
-                            chat_id,
-                            "🔎 Username ـی Instagram بنێرە.\n\n"
-                            "نموونە:\n"
-                            "@example"
-                        )
-
-                    elif data == "location":
-
-                        send_message(
-                            chat_id,
-                            "📍 ناوی شار یان شوێنی گشتی بنێرە.\n\n"
-                            "تەنها زانیاریی گشتی پشکنین دەکرێت."
-                        )
-
-                    elif data == "report":
-
-                        send_message(
-                            chat_id,
-                            "📊 بۆ دروستکردنی ڕاپۆرت، "
-                            "Username ـەکە بنێرە."
-                        )
-
-                    elif data == "info":
-
-                        send_message(
-                            chat_id,
-                            "ℹ️ Public OSINT Bot\n\n"
-                            "ئەم بۆتە بۆ پشکنینی "
-                            "زانیارییە گشتییەکانە.\n\n"
-                            "🔒 Private data bypass ناکرێت."
-                        )
-
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
-                return
-
-            # -------------------------
-            # Normal message
-            # -------------------------
-
-            message = update.get(
-                "message",
-                {}
-            )
-
-            chat = message.get(
-                "chat",
-                {}
-            )
-
-            chat_id = chat.get("id")
-
-            text = message.get(
-                "text",
-                ""
-            ).strip()
-
-            if not chat_id:
-
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
-                return
-
-            # -------------------------
-            # /start
-            # -------------------------
-
-            if text == "/start":
-
-                send_message(
-                    chat_id,
-                    "سڵاو 👋\n\n"
-                    "بەخێربێیت بۆ "
-                    "🔎 Public OSINT Bot\n\n"
-                    "Username ـی ئەکاونتێکی گشتی "
-                    "بنێرە بۆ دروستکردنی ڕاپۆرت.",
-                )
-
-                telegram(
-                    "sendMessage",
-                    {
-                        "chat_id": chat_id,
-                        "text": "⬇️ یەکێک هەڵبژێرە:",
-                        "reply_markup": menu()
-                    }
-                )
-
-            # -------------------------
-            # Commands
-            # -------------------------
-
-            elif text == "/search":
-
-                send_message(
-                    chat_id,
-                    "🔎 Username ـەکە بنێرە."
-                )
-
-            elif text == "/location":
-
-                send_message(
-                    chat_id,
-                    "📍 ناوی شار یان شوێنی گشتی بنێرە."
-                )
-
-            elif text == "/report":
-
-                send_message(
-                    chat_id,
-                    "📊 Username ـەکە بنێرە "
-                    "بۆ دروستکردنی ڕاپۆرت."
-                )
-
-            elif text == "/info":
-
-                send_message(
-                    chat_id,
-                    "ℹ️ ئەم بۆتە تەنها داتای "
-                    "گشتی و ڕێگەپێدراو بەکاردێنێت."
-                )
-
-            # -------------------------
-            # Username
-            # -------------------------
-
-            elif text:
-
-                username = (
-                    text
-                    .replace("https://instagram.com/", "")
-                    .replace("https://www.instagram.com/", "")
-                    .strip("/")
-                    .lstrip("@")
-                    .split("?")[0]
-                )
-
-                if username:
-
-                    send_message(
-                        chat_id,
-                        "⏳ پشکنین دەکرێت..."
-                    )
-
-                    result = public_profile(
-                        username
-                    )
-
-                    send_message(
-                        chat_id,
-                        result
-                    )
-
-                else:
-
-                    send_message(
-                        chat_id,
-                        "❌ Username ـی دروست بنێرە."
-                    )
-
+            # هێنانی زانیاری پڕۆفایلەکە
+            profile = instaloader.Profile.from_username(L.context, current_public_user)
+            
+            # گەڕان بەناو فۆڵۆوەرەکاندا
+            is_found = False
+            for follower in profile.get_followers():
+                if follower.username.lower() == target_user.lower():
+                    is_found = True
+                    break # دۆزرایەوە، پێویست ناکات بەردەوام بێت لە پشکنینی ئەم پەیجە
+            
+            if is_found:
+                print(f"   ✅ دۆزرایەوە! @{target_user} فۆڵۆوی @{current_public_user} ـی کردووە.")
+                found_in.append(current_public_user)
             else:
+                print("   ❌ نەدۆزرایەوە.")
+                
+        except instaloader.exceptions.ProfileNotExistsException:
+            print(f"   ⚠️ ئەکاونتی @{current_public_user} بوونی نییە یان سڕاوەتەوە.")
+        except instaloader.exceptions.PrivateProfileNotFollowedException:
+            print(f"   🔒 ئەکاونتی @{current_public_user} پرایڤەتە و ناتوانم بیپشکنم.")
+        except Exception as e:
+            print(f"   ⚠️ هەڵەیەک ڕوویدا لە کاتی پشکنینی @{current_public_user}: {e}")
 
-                send_message(
-                    chat_id,
-                    "تکایە /start بنێرە."
-                )
+        # سیستەمی وەستان (Rate Limiting) بۆ ئەوەی بلۆک نەبین
+        if index < total_accounts:
+            if index % BATCH_SIZE == 0:
+                print(f"\n💤 قۆناغی {BATCH_SIZE} ئەکاونتی تەواو بوو. چاوەڕوانی بۆ ماوەی {DELAY_BETWEEN_BATCHES} چرکە...")
+                time.sleep(DELAY_BETWEEN_BATCHES)
+            else:
+                print(f"   ⏱ چاوەڕوانی بۆ {DELAY_BETWEEN_ACCOUNTS} چرکە...")
+                time.sleep(DELAY_BETWEEN_ACCOUNTS)
 
-        except Exception:
+    # ٥. کۆتایی و ڕاپۆرت
+    print("\n" + "="*40)
+    print("پڕۆسەکە کۆتایی هات!")
+    if found_in:
+        print(f"🎉 یوزەری ئامانج (@{target_user}) لەم ئەکاونتانەدا دۆزرایەوە:")
+        for acc in found_in:
+            print(f" - @{acc}")
+    else:
+        print(f"یوزەری ئامانج (@{target_user}) لە هیچ کام لە ئەکاونتەکاندا نەدۆزرایەوە.")
+    print("="*40)
 
-            try:
-                if chat_id:
-                    send_message(
-                        chat_id,
-                        "❌ هەڵەیەک ڕوویدا. "
-                        "دواتر هەوڵ بدەرەوە."
-                    )
-            except Exception:
-                pass
-
-        self.send_response(200)
-        self.send_header(
-            "Content-Type",
-            "text/plain; charset=utf-8"
-        )
-        self.end_headers()
-        self.wfile.write(b"OK")
+if __name__ == "__main__":
+    main()
