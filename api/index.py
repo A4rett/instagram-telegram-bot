@@ -50,16 +50,24 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             if text == "/start":
-                reply = (
-                    "سڵاو 👋\n\n"
-                    "بەخێربێیت بۆ سیستەمی زانیاری گشتی 🔎\n\n"
-                    "لە خوارەوە دەتوانیت هەڵبژێریت:\n\n"
-                    "🔎 گەڕان\n"
-                    "📊 ڕاپۆرت\n"
-                    "ℹ️ زانیاری"
-                )
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🔎 گەڕانی Username", "callback_data": "search"},
+                {"text": "📍 گەڕانی شوێن", "callback_data": "location"}
+            ],
+            [
+                {"text": "📊 ڕاپۆرت", "callback_data": "report"},
+                {"text": "ℹ️ زانیاری", "callback_data": "info"}
+            ]
+        ]
+    }
 
-                send_message(chat_id, reply)
+    send_message(
+        chat_id,
+        "سڵاو 👋\n\nبەخێربێیت بۆ بۆتی زانیاری گشتی 🔎\n\nلە مێنیوەکەوە هەڵبژێرە:",
+        keyboard
+    )
 
             elif text == "/search":
                 send_message(
