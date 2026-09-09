@@ -1,95 +1,181 @@
+import telebot
 import instaloader
 import time
+import threading
+import os
 import sys
 
-# ڕێکخستنی کاتەکان بۆ ئەوەی ئینستاگرام بلۆکمان نەکات
-DELAY_BETWEEN_ACCOUNTS = 30  # ٣٠ چرکە وەستان لە نێوان هەر ئەکاونتێک
-BATCH_SIZE = 10              # پشکنینی ١٠ ئەکاونت لە هەر قۆناغێکدا
-DELAY_BETWEEN_BATCHES = 120  # ٢ خولەک وەستان لە نێوان قۆناغەکاندا
+TOKEN = os.environ.get('BOT_TOKEN')
 
-def load_combo_list(filename="combo.txt"):
-    """خوێندنەوەی یوزەرنەیمەکان لە فایلی کۆمبۆوە"""
-    try:
-        with open(filename, 'r', encoding='utf-8') as file:
-            # پاککردنەوەی ناوەکان لە بۆشایی و نیشانەی @
-            return [line.strip().replace('@', '') for line in file if line.strip()]
-    except FileNotFoundError:
-        print(f"❌ هەڵە: فایلی {filename} نەدۆزرایەوە.")
-        sys.exit(1)
+if not TOKEN:
+    print("❌ هەڵە: تۆکنی تیلیگرام نەدۆزرایەوە!")
+    sys.exit()
 
-def main():
-    print("=== سیستەمی گەڕان بەدوای یوزەر لەناو کۆمبۆ ===\n")
+bot = telebot.TeleBot(TOKEN)
+user_data = {}
+
+DELAY_BETWEEN_ACCOUNTS = 30
+BATCH_SIZE = 10
+DELAY_BETWEEN_BATCHES = 120
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add('📋 لیستی کۆمبۆ (Combo)', '📍 گەڕان بەپێی شوێن (Location)')
     
-    # ١. وەرگرتنی زانیارییەکان
-    target_user = input("یوزەرنەیمی ئامانج بنووسە (ئەو کەسەی کە لێی دەگەڕێیت): ").strip().replace('@', '')
-    my_username = input("یوزەرنەیمی ئەکاونتەکەی خۆت بنووسە (بۆ لۆگین): ").strip()
-    my_password = input("پاسۆردی ئەکاونتەکەی خۆت بنووسە: ").strip()
+    bot.send_message(
+        message.chat.id, 
+        "👋 بەخێربێیت!\n\nشێوازی کارکردن هەڵبژێرە:", 
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(message, process_mode_choice)
 
-    # ٢. دروستکردنی پەیوەندی لەگەڵ ئینستاگرام
+def process_mode_choice(message):
+    chat_id = message.chat.id
+    text = message.text
+    
+    if 'کۆمبۆ' in text:
+        user_data[chat_id] = {'mode': 'combo'}
+        bot.send_message(chat_id, "🎯 یوزەرنەیمی ئامانج (ئەو کەسەی کە لێی دەگەڕێیت) بنووسە:")
+        bot.register_next_step_handler(message, process_target)
+    elif 'شوێن' in text:
+        user_data[chat_id] = {'mode': 'location'}
+        bot.send_message(chat_id, "📍 ناوی شوێن یان هاشتاگ بنووسە (بۆ نموونە: halabja یان هەڵەبجە):")
+        bot.register_next_step_handler(message, process_location_name)
+    else:
+        bot.send_message(chat_id, "❌ هەڵبژاردنەکە ناتەواوە. تکایە /start بنووسە.")
+
+def process_location_name(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['location'] = message.text.strip().replace('#', '').lower()
+    
+    bot.send_message(chat_id, "🎯 ئێستا یوزەرنەیمی ئامانج بنووسە:")
+    bot.register_next_step_handler(message, process_target)
+
+def process_target(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['target'] = message.text.strip().replace('@', '')
+    
+    if user_data[chat_id].get('mode') == 'combo':
+        bot.send_message(chat_id, "📄 لیستی کۆمبۆ بنووسە (هەر یوزەرێک لە دێڕێکدا):")
+        bot.register_next_step_handler(message, process_combo_list)
+    else:
+        # ئەگەر شێوازی شوێن بوو، ڕاستەوخۆ داوای لۆگینی ئینستاگرام دەکەین بۆ ئەوەی خۆی پەیجەکان بدۆزێتەوە
+        ask_login(chat_id)
+
+def process_combo_list(message):
+    chat_id = message.chat.id
+    combo_list = [line.strip().replace('@', '') for line in message.text.split('\n') if line.strip()]
+    
+    if not combo_list:
+        bot.send_message(chat_id, "❌ هیچ ناوێک نەدۆزرایەوە. /start بنووسە.")
+        return
+        
+    user_data[chat_id]['combo'] = combo_list
+    ask_login(chat_id)
+
+def ask_login(chat_id):
+    bot.send_message(chat_id, "🔑 یوزەرنەیمی ئەکاونتی ئینستاگرامی خۆت بنووسە بۆ لۆگین (ئەکاونتی فەیک):")
+    bot.register_next_step_handler(message, process_ig_user)
+
+def process_ig_user(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['ig_user'] = message.text.strip()
+    bot.send_message(chat_id, "پاسۆردی ئەکاونتەکە بنووسە:")
+    bot.register_next_step_handler(message, process_ig_pass)
+
+def process_ig_pass(message):
+    chat_id = message.chat.id
+    user_data[chat_id]['ig_pass'] = message.text.strip()
+    
+    bot.send_message(chat_id, "⚙️ زانیارییەکان وەرگیران. پڕۆسەکە دەست پێ دەکات...")
+    t = threading.Thread(target=run_scraper, args=(chat_id,))
+    t.start()
+
+def run_scraper(chat_id):
+    data = user_data.get(chat_id)
+    if not data:
+        return
+        
+    target = data['target']
+    ig_user = data['ig_user']
+    ig_pass = data['ig_pass']
+    mode = data.get('mode')
+    
     L = instaloader.Instaloader()
     
     try:
-        print("\n⏳ خەریکی چوونەژوورەوەم بۆ ئینستاگرام...")
-        L.login(my_username, my_password)
-        print("✅ بە سەرکەوتوویی چووە ژوورەوە!\n")
+        bot.send_message(chat_id, "⏳ چوونەژوورەوە بۆ ئینستاگرام...")
+        L.login(ig_user, ig_pass)
+        bot.send_message(chat_id, "✅ سەرکەوتوو بوو!")
     except Exception as e:
-        print(f"❌ هەڵە لە چوونەژوورەوە: {e}")
-        sys.exit(1)
+        bot.send_message(chat_id, f"❌ هەڵە لە لۆگین: {e}")
+        return
 
-    # ٣. خوێندنەوەی لیستەکە
-    combo_list = load_combo_list("combo.txt")
-    total_accounts = len(combo_list)
-    print(f"📄 {total_accounts} ئەکاونت لە فایلی کۆمبۆدا دۆزرایەوە.")
+    # ئەگەر دۆخەکە Location بوو، لێرەدا خۆکارانە پەیجەکان دەدۆزینەوە
+    if mode == 'location':
+        loc_query = data['location']
+        bot.send_message(chat_id, f"🔍 گەڕان بەدوای ئەکاونتەکان بۆ شوێنی: {loc_query} ...")
+        combo = []
+        try:
+            hashtag = instaloader.Hashtag.from_name(L.context, loc_query)
+            for post in hashtag.get_posts():
+                owner = post.owner_profile
+                if not owner.is_private and owner.username not in combo:
+                    combo.append(owner.username)
+                if len(combo) >= 15: # سنووردارکردن بۆ خێرایی
+                    break
+        except Exception as e:
+            bot.send_message(chat_id, f"⚠️ هەڵە لە دۆزینەوەی پەیجەکان بەپێی شوێن: {e}")
+            return
+            
+        if not combo:
+        
+            bot.send_message(chat_id, "❌ هیچ ئەکاونتێکی پبلیک لەو شوێنە نەدۆزرایەوە.")
+            return
+        bot.send_message(chat_id, f"📄 {len(combo)} ئەکاونت دۆزرانەوە. دەست بە پشکنین دەکرێت...")
+    else:
+        combo = data['combo']
+
+    total = len(combo)
+    found_in = []
     
-    found_in = [] # ئەو ئەکاونتانەی کە ئامانجەکەی تێدا دەدۆزرێتەوە لێرە هەڵدەگیرێت
-
-    # ٤. لۆژیکی گەڕان و Batching
-    for index, current_public_user in enumerate(combo_list, start=1):
-        print(f"🔍 [{index}/{total_accounts}] پشکنینی فۆڵۆوەرەکانی: @{current_public_user}")
+    for index, acc in enumerate(combo, start=1):
+        bot.send_message(chat_id, f"🔍 [{index}/{total}] پشکنینی: @{acc}")
         
         try:
-            # هێنانی زانیاری پڕۆفایلەکە
-            profile = instaloader.Profile.from_username(L.context, current_public_user)
-            
-            # گەڕان بەناو فۆڵۆوەرەکاندا
+            profile = instaloader.Profile.from_username(L.context, acc)
             is_found = False
             for follower in profile.get_followers():
-                if follower.username.lower() == target_user.lower():
+                if follower.username.lower() == target.lower():
                     is_found = True
-                    break # دۆزرایەوە، پێویست ناکات بەردەوام بێت لە پشکنینی ئەم پەیجە
-            
+                    break
+                    
             if is_found:
-                print(f"   ✅ دۆزرایەوە! @{target_user} فۆڵۆوی @{current_public_user} ـی کردووە.")
-                found_in.append(current_public_user)
+                bot.send_message(chat_id, f"✅ دۆزرایەوە! @{target} فۆڵۆوی @{acc} ـی کردووە.")
+                found_in.append(acc)
             else:
-                print("   ❌ نەدۆزرایەوە.")
+                bot.send_message(chat_id, "❌ نەدۆزرایەوە.")
                 
-        except instaloader.exceptions.ProfileNotExistsException:
-            print(f"   ⚠️ ئەکاونتی @{current_public_user} بوونی نییە یان سڕاوەتەوە.")
-        except instaloader.exceptions.PrivateProfileNotFollowedException:
-            print(f"   🔒 ئەکاونتی @{current_public_user} پرایڤەتە و ناتوانم بیپشکنم.")
         except Exception as e:
-            print(f"   ⚠️ هەڵەیەک ڕوویدا لە کاتی پشکنینی @{current_public_user}: {e}")
+            bot.send_message(chat_id, f"⚠️ نەتوانرا @{acc} بپشکنرێت: {e}")
 
-        # سیستەمی وەستان (Rate Limiting) بۆ ئەوەی بلۆک نەبین
-        if index < total_accounts:
+        if index < total:
             if index % BATCH_SIZE == 0:
-                print(f"\n💤 قۆناغی {BATCH_SIZE} ئەکاونتی تەواو بوو. چاوەڕوانی بۆ ماوەی {DELAY_BETWEEN_BATCHES} چرکە...")
+                bot.send_message(chat_id, f"💤 پشووی {DELAY_BETWEEN_BATCHES} چرکە بۆ پاراستنی ئەکاونتەکە...")
                 time.sleep(DELAY_BETWEEN_BATCHES)
             else:
-                print(f"   ⏱ چاوەڕوانی بۆ {DELAY_BETWEEN_ACCOUNTS} چرکە...")
                 time.sleep(DELAY_BETWEEN_ACCOUNTS)
-
-    # ٥. کۆتایی و ڕاپۆرت
-    print("\n" + "="*40)
-    print("پڕۆسەکە کۆتایی هات!")
+                
+    result_text = "🎉 پڕۆسەی پشکنین کۆتایی هات!\n\n"
     if found_in:
-        print(f"🎉 یوزەری ئامانج (@{target_user}) لەم ئەکاونتانەدا دۆزرایەوە:")
-        for acc in found_in:
-            print(f" - @{acc}")
+        result_text += f"یوزەری @{target} لەم ئەکاونتانەدا دۆزرایەوە:\n"
+        for f in found_in:
+            result_text += f"✔️ @{f}\n"
     else:
-        print(f"یوزەری ئامانج (@{target_user}) لە هیچ کام لە ئەکاونتەکاندا نەدۆزرایەوە.")
-    print("="*40)
+        result_text += f"یوزەری @{target} لە هیچ کام لە پەیجەکاندا نەدۆزرایەوە."
+        
+    bot.send_message(chat_id, result_text)
 
-if __name__ == "__main__":
-    main()
+print("بۆتەکە کەوتە کار...")
+bot.infinity_polling()
