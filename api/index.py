@@ -1,6 +1,7 @@
 import os
 import json
 import urllib.request
+from urllib.parse import quote
 from http.server import BaseHTTPRequestHandler
 
 
